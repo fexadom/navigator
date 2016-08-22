@@ -33,7 +33,7 @@ public:
         
 private:
 	void StopScan();
-    
+    base::WeakPtrFactory<Daemon> weak_ptr_factory_{this};
 };
 
 class Daemon final : public brillo::Daemon {
@@ -88,7 +88,7 @@ void BluescanService::StopScan()
 	if(ble_registered)
     {
         LOG(INFO) << "Stopping scan...";
-        ble_iface->StopScan();
+        ble_iface->StopScan(ble_client_id);
     }else{
         LOG(ERROR) << "BLE not registered!";
     }
