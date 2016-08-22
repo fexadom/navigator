@@ -32,6 +32,7 @@ public:
     android::binder::Status DoScan();
         
 private:
+	void StopScan();
     
 };
 
@@ -68,12 +69,29 @@ android::binder::Status BluescanService::DoScan()
         bluetooth::ScanSettings settings;
         std::vector<bluetooth::ScanFilter> filters;
         ble_iface->StartScan(ble_client_id, settings, filters);
+		
+		//Schedule stop scan
+		brillo::MessageLoop::current()->PostDelayedTask(
+            base::Bind(&BluescanService::StopScan,
+                       weak_ptr_factory_.GetWeakPtr()),
+            base::TimeDelta::FromSeconds(1));
     }else{
         LOG(ERROR) << "BLE not registered!";
         return android::binder::Status::fromExceptionCode(android::binder::Status::EX_ILLEGAL_STATE);
     }
         
     return android::binder::Status::ok();
+}
+
+void BluescanService::StopScan()
+{
+	if(ble_registered)
+    {
+        LOG(INFO) << "Stopping scan...";
+        ble_iface->StopScan();
+    }else{
+        LOG(ERROR) << "BLE not registered!";
+    }
 }
 
 int Daemon::OnInit() {
