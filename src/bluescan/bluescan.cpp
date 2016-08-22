@@ -33,7 +33,7 @@ public:
         
 private:
 	void StopScan();
-    base::WeakPtrFactory<Daemon> weak_ptr_factory_{this};
+	base::WeakPtrFactory<BluescanService> weak_ptr_factory_{this};
 };
 
 class Daemon final : public brillo::Daemon {
