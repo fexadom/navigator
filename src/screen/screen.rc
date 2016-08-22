@@ -1,0 +1,4 @@
+service screen /system/bin/screen
+class late_start
+user root
+group system dbus inet

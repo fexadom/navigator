@@ -1,0 +1,33 @@
+# Base domain for a Brillo service.
+# You can use 'navigator_service' as your service's domain directly,
+# or use it as a base for your service's own domain.
+type navigator_service, domain;
+type navigator_service_exec, exec_type, file_type;
+
+# To use 'navigator_service' as the domain for your service,
+# label the service's executable as 'navigator_service_exec' in the 'file_contexts'
+# file in this directory.
+# brillo_domain() below ensures that executables labelled 'navigator_service_exec'
+# will be put in the 'navigator_service' domain at runtime.
+
+# Allow domain transition from init, and access to D-Bus and Binder.
+# See 'te_macros' in ${BDK_PATH}/device/generic/brillo/sepolicy for details.
+brillo_domain(navigator_service)
+
+# Allow network access (e.g. opening sockets).
+net_domain(navigator_service)
+
+# Allow crash_reporter access to core dump files.
+allow_crash_reporter(navigator_service)
+
+#Allow connection to weave
+allow_call_weave(navigator_service)
+
+#Allow connection to screen service
+allow navigator_service screen_service_srv:service_manager find;
+binder_call(navigator_service, screen_service)
+
+#Allow connection to bluescan service
+allow navigator_service bluescan_service_srv:service_manager find;
+binder_call(navigator_service, bluescan_service)
+binder_call(bluescan_service, navigator_service)

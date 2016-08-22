@@ -1,0 +1,10 @@
+# Uncomment the line below and replace 'sampleservice' with your service's
+# executable.
+/system/bin/navigator             u:object_r:navigator_service_exec:s0
+/system/bin/screen             u:object_r:screen_service_exec:s0
+/system/bin/bluescan             u:object_r:bluescan_service_exec:s0
+/dev/spidev5.1                  u:object_r:screen_service_dev:s0
+
+# If your service needs to persist data, uncomment the line below and replace
+# 'sampleservice' with your service's name or executable.
+# /data/misc/sampleservice(/.*)?        u:object_r:navigator_service_data_file:s0

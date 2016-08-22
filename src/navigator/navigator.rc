@@ -1,0 +1,4 @@
+service navigator /system/bin/navigator
+   class late_start
+   user system
+   group system

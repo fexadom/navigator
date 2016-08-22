@@ -1,0 +1,4 @@
+# Associate all navigator services names (as defined when it is added to
+# the service manager) with a context.
+screen_service u:object_r:screen_service_srv:s0
+bluescan_service u:object_r:bluescan_service_srv:s0

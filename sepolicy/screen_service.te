@@ -1,0 +1,14 @@
+type screen_service, domain;
+type screen_service_exec, exec_type, file_type;
+type screen_service_dev, dev_type;
+type screen_service_srv, service_manager_type;
+
+brillo_domain(screen_service)
+
+allow_crash_reporter(screen_service)
+
+allow screen_service sysfs:dir r_dir_perms;
+allow screen_service sysfs:file rw_file_perms;
+allow screen_service sysfs:lnk_file rw_file_perms;
+allow screen_service screen_service_dev:chr_file rw_file_perms;
+allow screen_service screen_service_srv:service_manager { add find };

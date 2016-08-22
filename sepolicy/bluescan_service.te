@@ -1,0 +1,20 @@
+# Domain for LED Flasher daemon.
+type bluescan_service, domain;
+type bluescan_service_exec, exec_type, file_type;
+type bluescan_service_srv, service_manager_type;
+
+brillo_domain(bluescan_service)
+allow_crash_reporter(bluescan_service)
+
+#Allow registration of bluescan service
+allow bluescan_service bluescan_service_srv:service_manager { add find };
+
+#Allow connection to bluetooth service
+allow bluescan_service bluetooth_service:service_manager find;
+binder_call(bluescan_service, bluetoothtbd)
+binder_call(bluetoothtbd, bluescan_service)
+
+#These lines fix a problem with the bluetoothtbd daemon
+allow bluetoothtbd system_file:dir r_dir_perms;
+allow bluetoothtbd system_file:file r_file_perms;
+
