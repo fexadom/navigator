@@ -23,6 +23,8 @@ class ScreenService : public navigator::services::screen::BnScreenService {
 public:
     void InitializeService();
     android::binder::Status DisplayText(const String16& s, int x, int y);
+    android::binder::Status DisplayCenteredText(const String16& s);
+    android::binder::Status TagPositionLost();
         
 private:
     void SetupButtons();
@@ -97,7 +99,7 @@ void ScreenService::SetupOLED()
 void ScreenService::StartScreen()
 {
 	oled.clear(PAGE);
-    oled.setCursor(2, 10);
+    oled.setCursor(2, 25);
     oled.print("SERVICE UP");
     // Call display to actually draw it on the OLED:
     oled.display();
@@ -115,14 +117,47 @@ android::binder::Status ScreenService::DisplayText(const String16& s, int x, int
     return android::binder::Status::ok();
 }
 
+//Implementation of service call to display centered text on screen
+android::binder::Status ScreenService::DisplayCenteredText(const String16& s)
+{
+    unsigned int x;
+    
+    size_t size = s.size();
+    
+    if(size > 32)
+        x = 0;
+    else
+        x = (32 - size)/2;
+    
+    oled.clear(PAGE);
+    oled.setCursor(x, 25);
+    oled.print(android::String8(s).string());
+    
+    // Call display to actually draw it on the OLED:
+    oled.display();
+    
+    return android::binder::Status::ok();
+}
+
+//Prints a circle on the top right corner to indicate position lost
+android::binder::Status ScreenService::TagPositionLost()
+{
+    oled.circleFill(59,6,3);
+    
+    // Call display to actually draw it on the OLED:
+    oled.display();
+    
+    return android::binder::Status::ok();
+}
+
 int Daemon::OnInit() {
     int return_code = brillo::Daemon::OnInit();
     if (return_code != EX_OK)
-    return return_code;
+        return return_code;
 
     android::BinderWrapper::Create();
     if (!binder_watcher_.Init())
-    return EX_OSERR;
+        return EX_OSERR;
     
     screen_service_ = new ScreenService();
     screen_service_->InitializeService();
@@ -139,7 +174,7 @@ int main(int argc, char* argv[]) {
     base::CommandLine::Init(argc, argv);
     brillo::InitLog(brillo::kLogToSyslog | brillo::kLogHeader);
     
-    LOG(INFO) << "Starting locator daemon...";
+    LOG(INFO) << "Starting screen daemon...";
     Daemon daemon;
     return daemon.Run();
 }

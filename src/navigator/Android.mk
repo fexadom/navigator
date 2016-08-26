@@ -31,6 +31,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libchrome \
 	libutils \
 	libweaved \
+	libbrillo-http \
 
 LOCAL_STATIC_LIBRARIES := \
 	libservices-common \

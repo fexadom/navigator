@@ -29,11 +29,19 @@ sp<IBluetoothLowEnergy> ble_iface;
 class BluescanService : public navigator::services::bluescan::BnBluescanService {
 public:
     void InitializeService();
-    android::binder::Status DoScan();
+    android::binder::Status DoScan(int milliseconds);
+    android::binder::Status RegisterCallback(const sp<navigator::services::bluescan::IBluescanCallback>& callback);
         
 private:
 	void StopScan();
+    void RegisterBLEClient();
+    
+    sp<navigator::services::bluescan::IBluescanCallback> cbo_;
 	base::WeakPtrFactory<BluescanService> weak_ptr_factory_{this};
+    std::vector<android::String16> scanResults_;
+    
+    sp<BluescanBluetoothCallback> callbackBT_;
+    sp<BluescanBluetoothLowEnergyCallback> callbackBLE_;
 };
 
 class Daemon final : public brillo::Daemon {
@@ -44,7 +52,7 @@ protected:
     int OnInit() override;
 
 private:
-    android::sp<BluescanService> bluescan_service_;
+    sp<BluescanService> bluescan_service_;
     brillo::BinderWatcher binder_watcher_;
 
     base::WeakPtrFactory<Daemon> weak_ptr_factory_{this};
@@ -54,14 +62,40 @@ private:
 
 void BluescanService::InitializeService()
 {
+    
     // Register Adapter state-change callback
-    sp<BluescanBluetoothCallback> callback = new BluescanBluetoothCallback();
-    bt_iface->RegisterCallback(callback);
+    callbackBT_ = new BluescanBluetoothCallback();
+    callbackBLE_ = new BluescanBluetoothLowEnergyCallback();
+    bt_iface->RegisterCallback(callbackBT_);
     
     bt_iface->Enable();
+    
+    RegisterBLEClient();
 }
 
-android::binder::Status BluescanService::DoScan()
+void BluescanService::RegisterBLEClient()
+{
+    if (state == bluetooth::ADAPTER_STATE_ON)
+    {
+        //Create and register to bluetooth ble interface
+        ble_iface = bt_iface->GetLowEnergyInterface();
+        if (!ble_iface.get()) {
+            LOG(ERROR) << "Failed to obtain handle to Bluetooth Low Energy interface";
+            ble_registered = false;
+        }else{
+            ble_iface->RegisterClient(callbackBLE_);
+        }
+    }else
+    {
+        //Try again in 1 second
+        brillo::MessageLoop::current()->PostDelayedTask(
+            base::Bind(&BluescanService::RegisterBLEClient,
+                       weak_ptr_factory_.GetWeakPtr()),
+            base::TimeDelta::FromSeconds(1));
+    }
+}
+
+android::binder::Status BluescanService::DoScan(int milliseconds)
 {
     if(ble_registered)
     {
@@ -71,10 +105,10 @@ android::binder::Status BluescanService::DoScan()
         ble_iface->StartScan(ble_client_id, settings, filters);
 		
 		//Schedule stop scan
-		brillo::MessageLoop::current()->PostDelayedTask(
+        brillo::MessageLoop::current()->PostDelayedTask(
             base::Bind(&BluescanService::StopScan,
                        weak_ptr_factory_.GetWeakPtr()),
-            base::TimeDelta::FromSeconds(1));
+            base::TimeDelta::FromMilliseconds(milliseconds));
     }else{
         LOG(ERROR) << "BLE not registered!";
         return android::binder::Status::fromExceptionCode(android::binder::Status::EX_ILLEGAL_STATE);
@@ -89,9 +123,19 @@ void BluescanService::StopScan()
     {
         LOG(INFO) << "Stopping scan...";
         ble_iface->StopScan(ble_client_id);
+        
+        scanResults_.clear();
+        callbackBLE_->CopyScanResults(scanResults_);
+        cbo_->OnFinishScanCallback(scanResults_);
     }else{
         LOG(ERROR) << "BLE not registered!";
     }
+}
+
+android::binder::Status BluescanService::RegisterCallback(const sp<navigator::services::bluescan::IBluescanCallback>& callback)
+{
+    cbo_ = callback;
+    return android::binder::Status::ok();
 }
 
 int Daemon::OnInit() {
