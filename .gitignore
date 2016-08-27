@@ -30,3 +30,8 @@
 
 # build folder
 out/
+
+#Sublime stuff
+*.sublime-project
+*.sublime-workspace
+.clang/

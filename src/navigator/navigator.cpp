@@ -223,7 +223,8 @@ void Daemon::OnIdentify(std::unique_ptr<weaved::Command> command) {
 
 void Daemon::OnPairingInfoChanged(
     const weaved::Service::PairingInfo* pairing_info) {
-    LOG(INFO) << "Daemon::OnPairingInfoChanged: " << pairing_info;
+    LOG(INFO) << "Daemon::OnPairingInfoChanged pairing code: " << pairing_info->pairing_code;
+    screen_service_->DisplayCenteredText(String16(pairing_info->pairing_code.c_str()));
 }
 
 android::binder::Status Daemon::OnFinishScanCallback(const std::vector<String16>& scanResults){
