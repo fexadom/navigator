@@ -30,6 +30,8 @@ private:
     void SetupButtons();
     void SetupOLED();
     void StartScreen();
+
+
     // Define an edOLED object:
     edOLED oled;
     mraa_gpio_context BUTTON_UP;
@@ -110,6 +112,7 @@ android::binder::Status ScreenService::DisplayText(const String16& s, int x, int
 {
     oled.clear(PAGE);
     oled.setCursor(x, y);
+
     oled.print(android::String8(s).string());
     // Call display to actually draw it on the OLED:
     oled.display();
@@ -124,10 +127,10 @@ android::binder::Status ScreenService::DisplayCenteredText(const String16& s)
     
     size_t size = s.size();
     
-    if(size > 32)
+    if(size > 11)
         x = 0;
     else
-        x = (32 - size)/2;
+        x = (11 - size)/2;
     
     oled.clear(PAGE);
     oled.setCursor(x, 25);
