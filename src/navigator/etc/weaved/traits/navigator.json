@@ -32,6 +32,9 @@
       },
       "interval": {
         "type": "integer"
+      },
+      "last_scan_result": {
+        "type": "integer"
       }
     }
   },//_scan trait
@@ -49,10 +52,15 @@
      }
     },
     "commands": {
-        "change_mode": {
-          "type": "string",
-          "enum": ["find", "locate" ]
+      "change_mode": {
+        "minimalRole": "user",
+        "parameters": {
+          "mode":{
+            "type": "string",
+            "enum": ["find", "locate" ]
+          }
         }
+      }
     }
   }//_location trait
 }

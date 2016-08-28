@@ -59,6 +59,7 @@ private:
 
     void OnScanStart(std::unique_ptr<weaved::Command> command);
     void OnScanStop(std::unique_ptr<weaved::Command> command);
+    void OnChangeMode(std::unique_ptr<weaved::Command> command);
     void UpdateScanningState();
     void UpdateScanResult();
 
@@ -86,6 +87,7 @@ private:
     // state variables
     std::string scanning_status_{"off"};
     std::string scan_location_result_{"CTI"};
+    std::string location_mode_{"find"};
     int scanning_duration_{3500};
     int scanning_interval_{1000};
 
@@ -135,6 +137,10 @@ void Daemon::OnWeaveServiceConnected(
     weave_service->AddCommandHandler(
       kNavigatorComponent, kScanTrait, "stop",
       base::Bind(&Daemon::OnScanStop, weak_ptr_factory_.GetWeakPtr()));
+
+    weave_service->AddCommandHandler(
+      kNavigatorComponent, kLocationTrait, "change_mode",
+      base::Bind(&Daemon::OnChangeMode, weak_ptr_factory_.GetWeakPtr()));
 
     weave_service->AddCommandHandler(
       kBaseComponent, kBaseTrait, "identify",
@@ -236,6 +242,19 @@ void Daemon::OnScanStop(std::unique_ptr<weaved::Command> command)
     command->Complete({}, nullptr);
 }
 
+void Daemon::OnChangeMode(std::unique_ptr<weaved::Command> command)
+{
+    LOG(INFO) << "Change mode command received...";
+
+    location_mode_ = command->GetParameter<std::string>("mode");
+
+    //Force scanning off
+    scanning_status_ = "off";
+
+    UpdateScanningState();
+    command->Complete({}, nullptr);
+}
+
 void Daemon::OnIdentify(std::unique_ptr<weaved::Command> command) {
     if (!screen_service_.get()) {
         command->Abort("_system_error", "screen service unavailable", nullptr);
@@ -262,26 +281,25 @@ void Daemon::OnPairingInfoChanged(
 }
 
 android::binder::Status Daemon::OnFinishScanCallback(const std::vector<String16>& scanResults){
-        
-        std::string results_json("{}");
-        
-        JSONfy(scanResults, results_json);
 
-        // LOG(INFO) << "JSON: " << results_json;
-        
-        SendHTTPRequest(results_json);
-        
-        /*JSONfy(scanResults, scan_result_);
+    std::string results_json("{}");
+    
+    JSONfy(scanResults, results_json);
 
+    if(location_mode_ == "find"){
         if(scanning_status_ == "on")
+        {
             brillo::MessageLoop::current()->PostDelayedTask(
-                base::Bind(&Daemon::FindPosition,
-                           weak_ptr_factory_.GetWeakPtr()),
-                base::TimeDelta::FromMilliseconds(scanning_interval_));
+            base::Bind(&Daemon::FindPosition,
+                       weak_ptr_factory_.GetWeakPtr()),
+            base::TimeDelta::FromMilliseconds(scanning_interval_));
 
-        UpdateScanResult();*/
-        
-        return android::binder::Status::ok();
+            UpdateScanResult();
+        }
+    }else
+        SendHTTPRequest(results_json);
+    
+    return android::binder::Status::ok();
 }
 
 void Daemon::SendHTTPRequest(std::string scanJSON)
@@ -293,35 +311,34 @@ void Daemon::SendHTTPRequest(std::string scanJSON)
 }
 
 void Daemon::HTTP_Success_callback(brillo::http::RequestID /*id*/, std::unique_ptr<brillo::http::Response> response) {
-    int statusCode;
-    std::unique_ptr<base::DictionaryValue> jsonResponse;
-    
-    jsonResponse = brillo::http::ParseJsonResponse(response.get(), &statusCode, nullptr);
-    
-    if(statusCode == 200){
-        if(jsonResponse)
-        {
-            std::string value("??");
-            if(jsonResponse->HasKey("location")){
-                jsonResponse->GetString("location",&value);
-                LOG(INFO) << "Location: " << value;
-                screen_service_->DisplayCenteredText(String16(value.c_str()));
-                scan_location_result_ = value;
-                UpdateScanResult();
+    if(scanning_status_ == "on"){
+        int statusCode;
+        std::unique_ptr<base::DictionaryValue> jsonResponse;
+        jsonResponse = brillo::http::ParseJsonResponse(response.get(), &statusCode, nullptr);
+        
+        if(statusCode == 200){
+            if(jsonResponse)
+            {
+                std::string value("??");
+                if(jsonResponse->HasKey("location")){
+                    jsonResponse->GetString("location",&value);
+                    LOG(INFO) << "Location: " << value;
+                    screen_service_->DisplayCenteredText(String16(value.c_str()));
+                    scan_location_result_ = value;
+                    UpdateScanResult();
+                }else{
+                    LOG(ERROR) << "UNKNOWN LOCATION";
+                    screen_service_->TagPositionLost();
+                }
             }else{
-                LOG(ERROR) << "UNKNOWN LOCATION";
+                LOG(ERROR) << "No JSON response";
                 screen_service_->TagPositionLost();
             }
         }else{
-            LOG(ERROR) << "No JSON response";
+            LOG(ERROR) << "Response code: " << statusCode;
             screen_service_->TagPositionLost();
         }
-    }else{
-        LOG(ERROR) << "Response code: " << statusCode;
-        screen_service_->TagPositionLost();
-    }
-    
-    if(scanning_status_ == "on"){
+        
         brillo::MessageLoop::current()->PostDelayedTask(
                 base::Bind(&Daemon::FindPosition,
                            weak_ptr_factory_.GetWeakPtr()),
@@ -346,10 +363,14 @@ void Daemon::JSONfy(const std::vector<String16>& scanResults, std::string& outpu
     int n = scanResults.size();
     
     base::DictionaryValue root_dict;
-    root_dict.SetString("group",navigator::JSONGroupName);
-    root_dict.SetString("username",navigator::JSONUserName);
-    root_dict.SetString("location",navigator::JSONLocation);
-    root_dict.SetDouble("time", static_cast<double> (std::time(0)));
+
+    //Only send this metadata in locate mode
+    if(location_mode_ == "locate"){
+        root_dict.SetString("group",navigator::JSONGroupName);
+        root_dict.SetString("username",navigator::JSONUserName);
+        root_dict.SetString("location",navigator::JSONLocation);
+        root_dict.SetDouble("time", static_cast<double> (std::time(0)));
+    }
     
     scoped_ptr<base::ListValue> list(new base::ListValue());
     for(int i=0;i<n;i++)
@@ -391,6 +412,12 @@ void Daemon::UpdateScanningState() {
                                   "interval",
                                   *brillo::ToValue(scanning_interval_),
                                   nullptr);
+
+  weave_service->SetStateProperty(kNavigatorComponent,
+                                  kLocationTrait,
+                                  "mode",
+                                  *brillo::ToValue(location_mode_),
+                                  nullptr);
 }
 
 void Daemon::UpdateScanResult() {
@@ -398,11 +425,20 @@ void Daemon::UpdateScanResult() {
     if (!weave_service)
     return;
 
-    weave_service->SetStateProperty(kNavigatorComponent,
+    if(location_mode_ == "locate"){
+        weave_service->SetStateProperty(kNavigatorComponent,
                                   kLocationTrait,
                                   "location",
                                   *brillo::ToValue(scan_location_result_),
                                   nullptr);
+    }else{
+        weave_service->SetStateProperty(kNavigatorComponent,
+                                  kScanTrait,
+                                  "last_scan_result",
+                                  *brillo::ToValue(scan_location_result_),
+                                  nullptr);
+    }
+    
 }
 
 int main(int argc, char* argv[]) {
