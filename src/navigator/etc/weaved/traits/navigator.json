@@ -41,7 +41,18 @@
     "state": {
       "location": {
         "type": "string"
-      }
+      },
+     "mode": {
+        "isRequired": true,
+        "type": "string",
+        "enum": [ "find", "locate" ]
+     }
+    },
+    "commands": {
+        "change_mode": {
+          "type": "string",
+          "enum": ["find", "locate" ]
+        }
     }
   }//_location trait
 }
