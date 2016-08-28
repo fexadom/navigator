@@ -1,14 +1,24 @@
 {
-  "onOff": {
+  //Custom scan trait
+  "_scan": {
     "commands": {
-      "setConfig": {
+      "start": {
         "minimalRole": "user",
         "parameters": {
-          "state": {
-            "type": "string",
-            "enum": [ "on", "off" ]
+          "duration": {
+            "type": "integer",
+            "minimum": 500,
+            "maximum": 10000
+          },
+          "interval": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 10000
           }
         }
+      },
+      "stop": {
+        "minimalRole": "user"
       }
     },
     "state": {
@@ -16,7 +26,22 @@
         "isRequired": true,
         "type": "string",
         "enum": [ "on", "off" ]
+      },
+      "duration": {
+        "type": "integer"
+      },
+      "interval": {
+        "type": "integer"
       }
     }
-  }
+  },//_scan trait
+
+  //Custom location trait
+  "_location": {
+    "state": {
+      "location": {
+        "type": "string"
+      }
+    }
+  }//_location trait
 }

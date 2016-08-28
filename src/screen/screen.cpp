@@ -130,7 +130,7 @@ android::binder::Status ScreenService::DisplayCenteredText(const String16& s)
     if(size > 11)
         x = 0;
     else
-        x = (11 - size)/2;
+        x = 3*(11 - size);
     
     oled.clear(PAGE);
     oled.setCursor(x, 25);

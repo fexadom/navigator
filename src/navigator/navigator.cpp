@@ -33,6 +33,10 @@ using navigator::services::bluescan::BnBluescanCallback;
 namespace {
 const char kBaseComponent[] = "base";
 const char kBaseTrait[] = "base";
+
+const char kNavigatorComponent[] = "navigator";
+const char kScanTrait[] = "_scan";
+const char kLocationTrait[] = "_location";
 }  // anonymous namespace
 
 class Daemon final : public brillo::Daemon, public BnBluescanCallback {
@@ -52,6 +56,12 @@ private:
     void ConnectToBluescanService();
     void OnBluescanServiceDisconnected();
     void OnPairingInfoChanged(const weaved::Service::PairingInfo* pairing_info);
+
+    void OnScanStart(std::unique_ptr<weaved::Command> command);
+    void OnScanStop(std::unique_ptr<weaved::Command> command);
+    void UpdateScanningState();
+    void UpdateScanResult();
+
     void JSONfy(const std::vector<String16>& scanResults, std::string& output_js);
     void HTTP_Success_callback(brillo::http::RequestID id, std::unique_ptr<brillo::http::Response> response);
     void HTTP_Error_callback(brillo::http::RequestID id, const brillo::Error* error);
@@ -60,6 +70,7 @@ private:
     void OnSetConfig(std::unique_ptr<weaved::Command> command);
     void OnIdentify(std::unique_ptr<weaved::Command> command);
 
+    // Weave service
     std::weak_ptr<weaved::Service> weave_service_;
 
     // Screen service interface.
@@ -71,6 +82,12 @@ private:
     brillo::BinderWatcher binder_watcher_;
     std::unique_ptr<weaved::Service::Subscription> weave_service_subscription_;
     std::shared_ptr<brillo::http::Transport> transport_;
+
+    // state variables
+    std::string scanning_status_{"off"};
+    std::string scan_location_result_{"CTI"};
+    int scanning_duration_{3500};
+    int scanning_interval_{1000};
 
     base::WeakPtrFactory<Daemon> weak_ptr_factory_{this};
     DISALLOW_COPY_AND_ASSIGN(Daemon);
@@ -108,6 +125,17 @@ void Daemon::OnWeaveServiceConnected(
     if (!weave_service)
         return;
 
+    weave_service->AddComponent(
+      kNavigatorComponent, {kScanTrait, kLocationTrait}, nullptr);
+
+    weave_service->AddCommandHandler(
+      kNavigatorComponent, kScanTrait, "start",
+      base::Bind(&Daemon::OnScanStart, weak_ptr_factory_.GetWeakPtr()));
+
+    weave_service->AddCommandHandler(
+      kNavigatorComponent, kScanTrait, "stop",
+      base::Bind(&Daemon::OnScanStop, weak_ptr_factory_.GetWeakPtr()));
+
     weave_service->AddCommandHandler(
       kBaseComponent, kBaseTrait, "identify",
       base::Bind(&Daemon::OnIdentify, weak_ptr_factory_.GetWeakPtr()));
@@ -115,6 +143,8 @@ void Daemon::OnWeaveServiceConnected(
     weave_service->SetPairingInfoListener(
       base::Bind(&Daemon::OnPairingInfoChanged,
                  weak_ptr_factory_.GetWeakPtr()));
+
+    UpdateScanningState();
 }
 
 void Daemon::ConnectToScreenService() {
@@ -151,11 +181,6 @@ void Daemon::ConnectToBluescanService() {
     bluescan_service_ = android::interface_cast<IBluescanService>(binder);
 
     bluescan_service_->RegisterCallback(this);
-    
-    brillo::MessageLoop::current()->PostDelayedTask(
-            base::Bind(&Daemon::FindPosition,
-                       weak_ptr_factory_.GetWeakPtr()),
-            base::TimeDelta::FromSeconds(2));
 }
 
 void Daemon::OnScreenServiceDisconnected() {
@@ -170,28 +195,42 @@ void Daemon::OnBluescanServiceDisconnected() {
 
 void Daemon::FindPosition()
 {
-    bluescan_service_->DoScan(3500);
+    bluescan_service_->DoScan(scanning_duration_);
 }
 
-void Daemon::OnSetConfig(std::unique_ptr<weaved::Command> command) {
-    if (!screen_service_.get()) {
-        command->Abort("_system_error", "screen service unavailable", nullptr);
+void Daemon::OnScanStart(std::unique_ptr<weaved::Command> command)
+{
+    if(!bluescan_service_.get()) {
+        LOG(ERROR) << "Can't start scan, bluescan service unavailable";
+        command->Abort("_system_error", "bluescan service unavailable", nullptr);
         return;
     }
 
-    auto state = command->GetParameter<std::string>("state");
-    bool on = (state == "on");
+    scanning_duration_ = command->GetParameter<int>("duration");
+    scanning_interval_ = command->GetParameter<int>("interval");
     
-    android::binder::Status status;
-  
-    if(on)
-        status = screen_service_->DisplayText(String16("ON"), 20, 10);
-    else
-        status = screen_service_->DisplayText(String16("OFF"), 20, 10);
-        
-    if (!status.isOk()) {
-        command->AbortWithCustomError(status, nullptr);
-        return;
+
+    LOG(INFO) << "Start command received: " << "duration: " << scanning_duration_ << " interval: " << scanning_interval_;
+
+    if(scanning_status_ == "off"){
+        brillo::MessageLoop::current()->PostDelayedTask(
+            base::Bind(&Daemon::FindPosition,
+                       weak_ptr_factory_.GetWeakPtr()),
+            base::TimeDelta::FromMilliseconds(scanning_interval_));
+        scanning_status_ = "on";
+        UpdateScanningState();
+    }
+
+    command->Complete({}, nullptr);
+}
+
+void Daemon::OnScanStop(std::unique_ptr<weaved::Command> command)
+{
+    LOG(INFO) << "Stop command received...";
+
+    if(scanning_status_ == "on"){
+        scanning_status_ = "off";
+        UpdateScanningState();
     }
     
     command->Complete({}, nullptr);
@@ -202,20 +241,8 @@ void Daemon::OnIdentify(std::unique_ptr<weaved::Command> command) {
         command->Abort("_system_error", "screen service unavailable", nullptr);
         return;
     }
-    
-    if (!bluescan_service_.get()) {
-        command->Abort("_system_error", "bluescan service unavailable", nullptr);
-        return;
-    }
 
-    android::binder::Status status1 = screen_service_->DisplayText(String16("Here"), 20, 10);
-    
-    android::binder::Status status2 = bluescan_service_->DoScan(3000);
-
-    if (!status1.isOk() || !status2.isOk()) {
-        command->AbortWithCustomError(status2, nullptr);
-        return;
-    }
+    screen_service_->DisplayCenteredText(String16("Here"));
 
     command->Complete({}, nullptr);
 }
@@ -223,8 +250,15 @@ void Daemon::OnIdentify(std::unique_ptr<weaved::Command> command) {
 
 void Daemon::OnPairingInfoChanged(
     const weaved::Service::PairingInfo* pairing_info) {
-    LOG(INFO) << "Daemon::OnPairingInfoChanged pairing code: " << pairing_info->pairing_code;
-    screen_service_->DisplayCenteredText(String16(pairing_info->pairing_code.c_str()));
+
+    if(pairing_info)
+    {
+        LOG(INFO) << "Displaying pairing code on screen...";
+        screen_service_->DisplayCenteredText(String16(pairing_info->pairing_code.data()));
+    }else{
+        LOG(INFO) << "Device paired...";
+        screen_service_->DisplayCenteredText(String16("online"));
+    }
 }
 
 android::binder::Status Daemon::OnFinishScanCallback(const std::vector<String16>& scanResults){
@@ -233,10 +267,19 @@ android::binder::Status Daemon::OnFinishScanCallback(const std::vector<String16>
         
         JSONfy(scanResults, results_json);
 
-        LOG(INFO) << "JSON: " << results_json;
+        // LOG(INFO) << "JSON: " << results_json;
         
         SendHTTPRequest(results_json);
         
+        /*JSONfy(scanResults, scan_result_);
+
+        if(scanning_status_ == "on")
+            brillo::MessageLoop::current()->PostDelayedTask(
+                base::Bind(&Daemon::FindPosition,
+                           weak_ptr_factory_.GetWeakPtr()),
+                base::TimeDelta::FromMilliseconds(scanning_interval_));
+
+        UpdateScanResult();*/
         
         return android::binder::Status::ok();
 }
@@ -263,30 +306,39 @@ void Daemon::HTTP_Success_callback(brillo::http::RequestID /*id*/, std::unique_p
                 jsonResponse->GetString("location",&value);
                 LOG(INFO) << "Location: " << value;
                 screen_service_->DisplayCenteredText(String16(value.c_str()));
+                scan_location_result_ = value;
+                UpdateScanResult();
             }else{
                 LOG(ERROR) << "UNKNOWN LOCATION";
                 screen_service_->TagPositionLost();
             }
-        }else
+        }else{
             LOG(ERROR) << "No JSON response";
-    }else
+            screen_service_->TagPositionLost();
+        }
+    }else{
         LOG(ERROR) << "Response code: " << statusCode;
-        
-    brillo::MessageLoop::current()->PostDelayedTask(
-            base::Bind(&Daemon::FindPosition,
-                       weak_ptr_factory_.GetWeakPtr()),
-            base::TimeDelta::FromSeconds(1));
+        screen_service_->TagPositionLost();
+    }
     
+    if(scanning_status_ == "on"){
+        brillo::MessageLoop::current()->PostDelayedTask(
+                base::Bind(&Daemon::FindPosition,
+                           weak_ptr_factory_.GetWeakPtr()),
+                base::TimeDelta::FromMilliseconds(scanning_interval_));
+    }
 }
     
 void Daemon::HTTP_Error_callback(brillo::http::RequestID id, const brillo::Error* error) {
     LOG(ERROR) << "Request id: "<< id << " ERROR MSG: " << error->GetMessage();
     screen_service_->TagPositionLost();
     
-    brillo::MessageLoop::current()->PostDelayedTask(
-            base::Bind(&Daemon::FindPosition,
-                       weak_ptr_factory_.GetWeakPtr()),
-            base::TimeDelta::FromSeconds(1));
+    if(scanning_status_ == "on"){
+        brillo::MessageLoop::current()->PostDelayedTask(
+                base::Bind(&Daemon::FindPosition,
+                           weak_ptr_factory_.GetWeakPtr()),
+                base::TimeDelta::FromMilliseconds(scanning_interval_));
+    }
 }
 
 void Daemon::JSONfy(const std::vector<String16>& scanResults, std::string& output_js)
@@ -315,6 +367,42 @@ void Daemon::JSONfy(const std::vector<String16>& scanResults, std::string& outpu
     
     root_dict.Set("wifi-fingerprint", std::move(list));
     base::JSONWriter::Write(root_dict, &output_js);
+}
+
+void Daemon::UpdateScanningState() {
+  auto weave_service = weave_service_.lock();
+  if (!weave_service)
+    return;
+
+  weave_service->SetStateProperty(kNavigatorComponent,
+                                  kScanTrait,
+                                  "state",
+                                  *brillo::ToValue(scanning_status_),
+                                  nullptr);
+
+  weave_service->SetStateProperty(kNavigatorComponent,
+                                  kScanTrait,
+                                  "duration",
+                                  *brillo::ToValue(scanning_duration_),
+                                  nullptr);
+
+  weave_service->SetStateProperty(kNavigatorComponent,
+                                  kScanTrait,
+                                  "interval",
+                                  *brillo::ToValue(scanning_interval_),
+                                  nullptr);
+}
+
+void Daemon::UpdateScanResult() {
+    auto weave_service = weave_service_.lock();
+    if (!weave_service)
+    return;
+
+    weave_service->SetStateProperty(kNavigatorComponent,
+                                  kLocationTrait,
+                                  "location",
+                                  *brillo::ToValue(scan_location_result_),
+                                  nullptr);
 }
 
 int main(int argc, char* argv[]) {
