@@ -91,6 +91,9 @@ private:
     int scanning_duration_{3500};
     int scanning_interval_{1000};
 
+    //ID of http request ID to expect
+    int expectingRequesID_{0};
+
     base::WeakPtrFactory<Daemon> weak_ptr_factory_{this};
     DISALLOW_COPY_AND_ASSIGN(Daemon);
 };
@@ -139,7 +142,7 @@ void Daemon::OnWeaveServiceConnected(
       base::Bind(&Daemon::OnScanStop, weak_ptr_factory_.GetWeakPtr()));
 
     weave_service->AddCommandHandler(
-      kNavigatorComponent, kLocationTrait, "change_mode",
+      kNavigatorComponent, kLocationTrait, "changeMode",
       base::Bind(&Daemon::OnChangeMode, weak_ptr_factory_.GetWeakPtr()));
 
     weave_service->AddCommandHandler(
@@ -294,6 +297,8 @@ android::binder::Status Daemon::OnFinishScanCallback(const std::vector<String16>
                        weak_ptr_factory_.GetWeakPtr()),
             base::TimeDelta::FromMilliseconds(scanning_interval_));
 
+            scan_location_result_ = results_json;
+
             UpdateScanResult();
         }
     }else
@@ -304,19 +309,21 @@ android::binder::Status Daemon::OnFinishScanCallback(const std::vector<String16>
 
 void Daemon::SendHTTPRequest(std::string scanJSON)
 {
-    brillo::http::PostText(navigator::FinderURL, scanJSON, brillo::mime::application::kJson, {}, transport_, 
+    expectingRequesID_ = brillo::http::PostText(navigator::FinderURL, scanJSON, brillo::mime::application::kJson, {}, transport_, 
     base::Bind(&Daemon::HTTP_Success_callback, weak_ptr_factory_.GetWeakPtr()),base::Bind(&Daemon::HTTP_Error_callback, weak_ptr_factory_.GetWeakPtr()));
     
-    LOG(INFO) << "Watinting for response...";
+    LOG(INFO) << "Sending http request: " << scanJSON;
 }
 
-void Daemon::HTTP_Success_callback(brillo::http::RequestID /*id*/, std::unique_ptr<brillo::http::Response> response) {
+void Daemon::HTTP_Success_callback(brillo::http::RequestID id, std::unique_ptr<brillo::http::Response> response) {
     if(scanning_status_ == "on"){
         int statusCode;
         std::unique_ptr<base::DictionaryValue> jsonResponse;
         jsonResponse = brillo::http::ParseJsonResponse(response.get(), &statusCode, nullptr);
         
-        if(statusCode == 200){
+
+        //Only proceed if response is 200 and the id matches the last http request
+        if(statusCode == 200 && expectingRequesID_ == id){
             if(jsonResponse)
             {
                 std::string value("??");
@@ -434,7 +441,7 @@ void Daemon::UpdateScanResult() {
     }else{
         weave_service->SetStateProperty(kNavigatorComponent,
                                   kScanTrait,
-                                  "last_scan_result",
+                                  "lastScanResult",
                                   *brillo::ToValue(scan_location_result_),
                                   nullptr);
     }

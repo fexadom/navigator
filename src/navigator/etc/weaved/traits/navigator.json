@@ -33,14 +33,25 @@
       "interval": {
         "type": "integer"
       },
-      "last_scan_result": {
-        "type": "integer"
+      "lastScanResult": {
+        "type": "string"
       }
     }
   },//_scan trait
 
   //Custom location trait
   "_location": {
+    "commands": {
+      "changeMode": {
+        "minimalRole": "user",
+        "parameters": {
+          "mode": {
+            "type": "string",
+            "enum": [ "find", "locate" ]
+          }
+        }
+      }
+    },
     "state": {
       "location": {
         "type": "string"
@@ -50,17 +61,6 @@
         "type": "string",
         "enum": [ "find", "locate" ]
      }
-    },
-    "commands": {
-      "change_mode": {
-        "minimalRole": "user",
-        "parameters": {
-          "mode":{
-            "type": "string",
-            "enum": ["find", "locate" ]
-          }
-        }
-      }
     }
   }//_location trait
 }
