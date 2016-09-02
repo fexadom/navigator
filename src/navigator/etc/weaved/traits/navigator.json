@@ -19,6 +19,14 @@
       },
       "stop": {
         "minimalRole": "user"
+      },
+      "updateScanConfig": {
+        "minimalRole": "user",
+        "parameters": {
+          "findServiceURL": {
+            "type": "string"
+          }
+        }
       }
     },
     "state": {
@@ -32,6 +40,9 @@
       },
       "interval": {
         "type": "integer"
+      },
+      "findServiceURL": {
+        "type": "string"
       },
       "lastScanResult": {
         "type": "string"

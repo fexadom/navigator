@@ -39,7 +39,7 @@ void BluescanBluetoothLowEnergyCallback::CopyScanResults(std::vector<android::St
     {
         if(index < navigator::MaxScanBeacons)
         {
-            std::string beacon_str = myMapIterator->first + navigator::BluescanStringDelimeter + std::to_string(myMapIterator->second);
+            std::string beacon_str = myMapIterator->first + navigator::kBluescanStringDelimeter + std::to_string(myMapIterator->second);
             copy.push_back(android::String16(beacon_str.c_str()));
             index++;
         }

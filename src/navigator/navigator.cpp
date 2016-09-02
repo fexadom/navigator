@@ -59,6 +59,7 @@ private:
 
     void OnScanStart(std::unique_ptr<weaved::Command> command);
     void OnScanStop(std::unique_ptr<weaved::Command> command);
+    void OnUpdateScanConfig(std::unique_ptr<weaved::Command> command);
     void OnChangeMode(std::unique_ptr<weaved::Command> command);
     void UpdateScanningState();
     void UpdateScanResult();
@@ -88,6 +89,7 @@ private:
     std::string scanning_status_{"off"};
     std::string scan_location_result_{"CTI"};
     std::string location_mode_{"find"};
+    std::string find_service_url_{navigator::kFinderURL};
     int scanning_duration_{3500};
     int scanning_interval_{1000};
 
@@ -140,6 +142,10 @@ void Daemon::OnWeaveServiceConnected(
     weave_service->AddCommandHandler(
       kNavigatorComponent, kScanTrait, "stop",
       base::Bind(&Daemon::OnScanStop, weak_ptr_factory_.GetWeakPtr()));
+
+    weave_service->AddCommandHandler(
+      kNavigatorComponent, kScanTrait, "updateScanConfig",
+      base::Bind(&Daemon::OnUpdateScanConfig, weak_ptr_factory_.GetWeakPtr()));
 
     weave_service->AddCommandHandler(
       kNavigatorComponent, kLocationTrait, "changeMode",
@@ -245,6 +251,20 @@ void Daemon::OnScanStop(std::unique_ptr<weaved::Command> command)
     command->Complete({}, nullptr);
 }
 
+void Daemon::OnUpdateScanConfig(std::unique_ptr<weaved::Command> command)
+{
+    LOG(INFO) << "UpdateScanConfig command received...";
+
+    find_service_url_ = command->GetParameter<int>("findServiceURL");
+
+    if(scanning_status_ == "on"){
+        scanning_status_ = "off";
+        UpdateScanningState();
+    }
+    
+    command->Complete({}, nullptr);
+}
+
 void Daemon::OnChangeMode(std::unique_ptr<weaved::Command> command)
 {
     LOG(INFO) << "Change mode command received...";
@@ -309,7 +329,7 @@ android::binder::Status Daemon::OnFinishScanCallback(const std::vector<String16>
 
 void Daemon::SendHTTPRequest(std::string scanJSON)
 {
-    expectingRequesID_ = brillo::http::PostText(navigator::FinderURL, scanJSON, brillo::mime::application::kJson, {}, transport_, 
+    expectingRequesID_ = brillo::http::PostText(find_service_url_, scanJSON, brillo::mime::application::kJson, {}, transport_, 
     base::Bind(&Daemon::HTTP_Success_callback, weak_ptr_factory_.GetWeakPtr()),base::Bind(&Daemon::HTTP_Error_callback, weak_ptr_factory_.GetWeakPtr()));
     
     LOG(INFO) << "Sending http request: " << scanJSON;
@@ -373,9 +393,9 @@ void Daemon::JSONfy(const std::vector<String16>& scanResults, std::string& outpu
 
     //Only send this metadata in locate mode
     if(location_mode_ == "locate"){
-        root_dict.SetString("group",navigator::JSONGroupName);
-        root_dict.SetString("username",navigator::JSONUserName);
-        root_dict.SetString("location",navigator::JSONLocation);
+        root_dict.SetString("group",navigator::kJSONGroupName);
+        root_dict.SetString("username",navigator::kJSONUserName);
+        root_dict.SetString("location",navigator::kJSONLocation);
         root_dict.SetDouble("time", static_cast<double> (std::time(0)));
     }
     
@@ -383,7 +403,7 @@ void Daemon::JSONfy(const std::vector<String16>& scanResults, std::string& outpu
     for(int i=0;i<n;i++)
     {
         std::string s = android::String8(scanResults[i]).string();
-        std::vector<std::string> tokens = base::SplitString(s,navigator::BluescanStringDelimeter,base::KEEP_WHITESPACE, base::SPLIT_WANT_ALL);
+        std::vector<std::string> tokens = base::SplitString(s,navigator::kBluescanStringDelimeter,base::KEEP_WHITESPACE, base::SPLIT_WANT_ALL);
         std::string mac = tokens[0];
         int rssi = std::stoi(tokens[1]);
         
@@ -418,6 +438,12 @@ void Daemon::UpdateScanningState() {
                                   kScanTrait,
                                   "interval",
                                   *brillo::ToValue(scanning_interval_),
+                                  nullptr);
+  
+  weave_service->SetStateProperty(kNavigatorComponent,
+                                  kScanTrait,
+                                  "findServiceURL",
+                                  *brillo::ToValue(find_service_url_),
                                   nullptr);
 
   weave_service->SetStateProperty(kNavigatorComponent,

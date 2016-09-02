@@ -2,11 +2,11 @@
 
 namespace navigator {
 
-extern const char JSONGroupName[];
-extern const char JSONUserName[];
-extern const char JSONLocation[];
-extern const char FinderURL[];
-extern const char BluescanStringDelimeter[];
+extern const char kJSONGroupName[];
+extern const char kJSONUserName[];
+extern const char kJSONLocation[];
+extern const char kFinderURL[];
+extern const char kBluescanStringDelimeter[];
 extern const int MaxScanBeacons;
 
 }  // namespace navigator
