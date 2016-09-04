@@ -88,7 +88,7 @@ private:
     // state variables
     std::string scanning_status_{"off"};
     std::string scan_location_result_{"CTI"};
-    std::string location_mode_{"find"};
+    std::string location_mode_{"locate"};
     std::string find_service_url_{navigator::kFinderURL};
     int scanning_duration_{3500};
     int scanning_interval_{1000};
@@ -255,12 +255,13 @@ void Daemon::OnUpdateScanConfig(std::unique_ptr<weaved::Command> command)
 {
     LOG(INFO) << "UpdateScanConfig command received...";
 
-    find_service_url_ = command->GetParameter<int>("findServiceURL");
+    find_service_url_ = command->GetParameter<std::string>("findServiceURL");
 
     if(scanning_status_ == "on"){
         scanning_status_ = "off";
-        UpdateScanningState();
     }
+
+    UpdateScanningState();
     
     command->Complete({}, nullptr);
 }
