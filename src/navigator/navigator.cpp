@@ -90,6 +90,8 @@ private:
     std::string scan_location_result_{"CTI"};
     std::string location_mode_{"locate"};
     std::string find_service_url_{navigator::kFinderURL};
+    std::string find_service_user_{navigator::kJSONUserName};
+    std::string find_service_group_{navigator::kJSONGroupName};
     int scanning_duration_{3500};
     int scanning_interval_{1000};
 
@@ -256,6 +258,8 @@ void Daemon::OnUpdateScanConfig(std::unique_ptr<weaved::Command> command)
     LOG(INFO) << "UpdateScanConfig command received...";
 
     find_service_url_ = command->GetParameter<std::string>("findServiceURL");
+    find_service_user_ = command->GetParameter<std::string>("findServiceUser");
+    find_service_group_ = command->GetParameter<std::string>("findServiceGroup");
 
     if(scanning_status_ == "on"){
         scanning_status_ = "off";
@@ -394,8 +398,8 @@ void Daemon::JSONfy(const std::vector<String16>& scanResults, std::string& outpu
 
     //Only send this metadata in locate mode
     if(location_mode_ == "locate"){
-        root_dict.SetString("group",navigator::kJSONGroupName);
-        root_dict.SetString("username",navigator::kJSONUserName);
+        root_dict.SetString("group",find_service_group_);
+        root_dict.SetString("username",find_service_user_);
         root_dict.SetString("location",navigator::kJSONLocation);
         root_dict.SetDouble("time", static_cast<double> (std::time(0)));
     }
@@ -445,6 +449,18 @@ void Daemon::UpdateScanningState() {
                                   kScanTrait,
                                   "findServiceURL",
                                   *brillo::ToValue(find_service_url_),
+                                  nullptr);
+
+  weave_service->SetStateProperty(kNavigatorComponent,
+                                  kScanTrait,
+                                  "findServiceUser",
+                                  *brillo::ToValue(find_service_user_),
+                                  nullptr);
+
+  weave_service->SetStateProperty(kNavigatorComponent,
+                                  kScanTrait,
+                                  "findServiceGroup",
+                                  *brillo::ToValue(find_service_group_),
                                   nullptr);
 
   weave_service->SetStateProperty(kNavigatorComponent,

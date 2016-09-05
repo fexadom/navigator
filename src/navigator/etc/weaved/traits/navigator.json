@@ -25,6 +25,12 @@
         "parameters": {
           "findServiceURL": {
             "type": "string"
+          },
+          "findServiceUser": {
+            "type": "string"
+          },
+          "findServiceGroup": {
+            "type": "string"
           }
         }
       }
@@ -42,6 +48,12 @@
         "type": "integer"
       },
       "findServiceURL": {
+        "type": "string"
+      },
+      "findServiceUser": {
+        "type": "string"
+      },
+      "findServiceGroup": {
         "type": "string"
       },
       "lastScanResult": {
